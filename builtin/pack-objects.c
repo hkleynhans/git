@@ -48,6 +48,7 @@ static int reuse_delta = 1, reuse_object = 1;
 static int keep_unreachable, unpack_unreachable, include_tag;
 static timestamp_t unpack_unreachable_expiration;
 static int pack_loose_unreachable;
+static const char* recent_unreachable_dumpfile = NULL;
 static int local;
 static int have_non_local_packs;
 static int incremental;
@@ -2772,6 +2773,23 @@ static void record_recent_commit(struct commit *commit, void *data)
 	oid_array_append(&recent_objects, &commit->object.oid);
 }
 
+static int dump_recent_unreachable_oid(const struct object_id *oid, void *data)
+{
+	fprintf_or_die((FILE*)data, "%s\n", oid_to_hex(oid));
+	return 0;
+}
+
+static void dump_recent_unreachable_oids()
+{
+	FILE* fp = fopen_for_writing(recent_unreachable_dumpfile);
+	if (fp == NULL)
+		die_errno(_("could not open '%s'"), recent_unreachable_dumpfile);
+
+	oid_array_for_each_unique(&recent_objects, dump_recent_unreachable_oid, fp);
+
+	fclose(fp);
+}
+
 static void get_object_list(int ac, const char **av)
 {
 	struct rev_info revs;
@@ -2836,6 +2854,8 @@ static void get_object_list(int ac, const char **av)
 		add_unreachable_loose_objects();
 	if (unpack_unreachable)
 		loosen_unused_packed_objects(&revs);
+	if (recent_unreachable_dumpfile)
+		dump_recent_unreachable_oids();
 
 	oid_array_clear(&recent_objects);
 }
@@ -2939,6 +2959,8 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 		{ OPTION_CALLBACK, 0, "unpack-unreachable", NULL, N_("time"),
 		  N_("unpack unreachable objects newer than <time>"),
 		  PARSE_OPT_OPTARG, option_parse_unpack_unreachable },
+		OPT_STRING(0, "dump_recent_unreachable", &recent_unreachable_dumpfile,
+			   NULL, N_("dump recent unreachable oids to the given file")),
 		OPT_BOOL(0, "thin", &thin,
 			 N_("create thin packs")),
 		OPT_BOOL(0, "shallow", &shallow,
